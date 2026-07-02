@@ -6,8 +6,7 @@ description: Write, compile, and evaluate Nodora rulesets. Nodora is a declarati
 # Nodora
 
 Nodora is a small declarative language for **business rules**. A ruleset is
-compiled once to NIR (Nodora Intermediate Representation, a portable JSON
-program) and then evaluated against a JSON `input` object. Evaluation produces
+compiled once and then evaluated against a JSON `input` object. Evaluation produces
 two things: an **outputs** map (what is true about the input) and an ordered
 list of **emitted signals** (what should happen next).
 
@@ -145,9 +144,10 @@ tag0 = input.tags[0]
 ```
 
 Reading a missing field yields the special value `undefined`. `undefined`
-**propagates** through almost everything (arithmetic, comparison, logic, field
-access, most built-ins) instead of raising an error, and `undefined` outputs
-are omitted. So partial inputs are safe. Test explicitly with `is_defined(x)`.
+**propagates** through almost everything (arithmetic, comparison, field access,
+most built-ins) instead of raising an error, and `undefined` outputs are
+omitted. So partial inputs are safe. Test explicitly with `is_defined(x)`.
+(Exception: `&&`/`||` use Kleene logic — see Operators.)
 
 ## Types
 
@@ -158,11 +158,17 @@ Nodora is statically typed with **no implicit coercion**.
 | `string` | `"hi"`, `""` (escapes `\n \t \r \" \\`)                |
 | `number` | `0`, `42`, `3.14` (64-bit float; no separate int type) |
 | `bool`   | `true`, `false`                                        |
+| `null`   | `null` (a defined value; distinct from `undefined`)    |
 | `object` | `{ a: 1, "b": "x" }`                                   |
 | `array`  | `[1, 2, 3]`                                            |
 
 `any` is the top type (built-in arg slots). Unions appear in signatures as
 `A|B`. `array<T>` is the element-typed array form used in signatures.
+
+`null` is an explicit empty (a JSON `null` input reads as `null`; a missing
+field reads as `undefined`). A `null` output is serialized; an `undefined`
+output is omitted. Compare against `null` with `==`/`!=` regardless of the
+other operand's type.
 
 ## Operators
 
@@ -179,8 +185,11 @@ Key constraints (each is a compile error if violated):
 
 - `+` requires both `number` or both `string`. No mixing.
 - `- * / %`, `< <= > >=` require `number`. `/` and `% 0` yield `undefined`.
-- `&& || !` require `bool`.
-- `==`/`!=` require operands of the same type; compare structurally.
+- `&& || !` require `bool`. `&&`/`||` are three-valued (Kleene): `false && x`
+  is `false` and `true || x` is `true` even when `x` is `undefined`; otherwise
+  an `undefined` operand gives `undefined`.
+- `==`/`!=` require operands of the same type (except against `null`, which is
+  comparable to any type); compare structurally.
 - `in` requires an array on the right.
 
 Precedence (high→low): access/call → unary `! -` → `* / %` → `+ -` →
@@ -211,9 +220,13 @@ out limit = match input.plan {
 }
 ```
 
-Patterns: number/string/bool literal (equality), identifier (binds the value),
-`_` (wildcard). An arm may add a `when <bool>` guard; guarded arms do **not**
-count toward exhaustiveness.
+Patterns: number/string/bool/`null` literal (equality), identifier (binds the
+value), `_` (wildcard). A `null` pattern matches any scrutinee type. An arm may
+add a `when <bool>` guard; guarded arms do **not** count toward exhaustiveness.
+
+`_` covers every **defined** value but not `undefined`: an undefined scrutinee
+makes the whole `match` `undefined` (the catch-all is not reached). Make the
+scrutinee defined if you need to handle the missing case.
 
 ```text
 out tier = match input.requests {
@@ -313,7 +326,7 @@ Install with the following command:
 - Linux / macOS: `curl -fsSL https://nodora.org/install.sh | bash`
 - Windows: `irm https://nodora.org/install.ps1 | iex`
 
-Verified against nodora `v0.1.3` (check yours with `nodora version`). 
+Verified against nodora `v0.2.1` (check yours with `nodora version`). 
 The commands and flags may differ on other releases — run `nodora help` to confirm.
 
 ### compile
